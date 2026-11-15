@@ -584,6 +584,25 @@ body{background:var(--bg)}
 .em-zh small{font-weight:500}
 .em-zh textarea,.em-zh input{width:100%;box-sizing:border-box;font:inherit;font-size:15px;padding:9px 11px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);resize:vertical}
 @media (max-width:900px){.em-zh{grid-template-columns:1fr}}
+
+/* ---------- live captions ---------- */
+.lc{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:20px;display:grid;gap:10px;box-shadow:var(--shadow)}
+.lc-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.lc-head h2{font-size:18px;display:flex;align-items:center;gap:8px;margin-right:auto}
+.lc-dot{width:10px;height:10px;border-radius:50%;background:var(--line);flex:none}
+.lc.on .lc-dot{background:var(--brand);animation:lcPulse 1.4s ease-in-out infinite}
+@keyframes lcPulse{50%{opacity:.3}}
+.lc-btn{border:0;background:var(--brand);color:var(--brand-ink);border-radius:10px;padding:8px 16px;font-weight:700;cursor:pointer}
+.lc.on .lc-btn{background:var(--surface);color:var(--brand-text);box-shadow:inset 0 0 0 2px var(--brand)}
+.lc-sm{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 10px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted)}
+.lc-sm:hover{color:var(--ink)}
+.lc-text{max-height:130px;min-height:52px;overflow-y:auto;background:var(--say,var(--neutral-soft));border-radius:12px;padding:10px 12px;font-size:16px;line-height:1.5;overflow-wrap:anywhere}
+.lc-text .lc-ph,.lc-text i{color:var(--muted)}
+.lc-ticked{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+.lc-chip{border:1px solid var(--brand);background:var(--brand-soft);color:var(--brand-text);border-radius:99px;padding:3px 10px;font-size:13px;font-weight:700;cursor:pointer}
+.lc-msg{margin:0;font-size:13px;color:var(--muted)}
+.lc-msg.err{color:var(--orange)}
+@media (prefers-reduced-motion:reduce){.lc.on .lc-dot{animation:none}}
 </style>
 </head>
 <body>
@@ -594,7 +613,6 @@ body{background:var(--bg)}
     <div class="brand">GloBird call guide<small>Clear, compliant move-in and transfer calls</small></div>
     <nav class="tabs" role="tablist" aria-label="Sections">
       <button class="tab" role="tab" id="t-checklist" data-v="checklist" aria-selected="true">Call checklist</button>
-      <button class="tab" role="tab" id="t-online" data-v="online" aria-selected="false">Online checklist</button>
       <button class="tab" role="tab" id="t-scenarios" data-v="scenarios" aria-selected="false">Scenarios</button>
       <button class="tab" role="tab" id="t-emails" data-v="emails" aria-selected="false">Emails</button>
       <button class="tab" role="tab" id="t-links" data-v="links" aria-selected="false">Links</button>
@@ -606,6 +624,17 @@ body{background:var(--bg)}
 
   <!-- CALL CHECKLIST -->
   <section class="view" id="v-checklist" aria-labelledby="t-checklist">
+    <div class="lc" id="lc" aria-label="Live captions">
+      <div class="lc-head">
+        <h2><span class="lc-dot" aria-hidden="true"></span>Live captions</h2>
+        <button class="lc-sm" id="lc-notes" hidden>Add to call notes</button>
+        <button class="lc-sm" id="lc-clear" hidden>Clear</button>
+        <button class="lc-btn" id="lc-btn">Start captions</button>
+      </div>
+      <div class="lc-text" id="lc-text" aria-live="polite"><span class="lc-ph">Captions use your mic only, so they show what you say. When you say a checklist line, it gets ticked for you.</span></div>
+      <div class="lc-ticked" id="lc-ticked" hidden></div>
+      <p class="lc-msg" id="lc-msg"></p>
+    </div>
     <div class="split"><div class="flow" id="cl-flow"></div><div class="side"><aside class="notes" aria-label="Call notes"><label for="nt-call">Call notes</label><textarea id="nt-call" placeholder="Name, NMI, anything to remember from this call..." spellcheck="true"></textarea><p>Saved on this device for the current call. Cleared when you start a new call.</p></aside><div id="feeSide"></div></div></div>
   </section>
 
@@ -1523,7 +1552,7 @@ body{background:var(--bg)}
   /* ---------- navigation ---------- */
   function setView(v){
     S.view = v;
-    ["checklist","online","scenarios","emails","links"].forEach(function(n){
+    ["checklist","scenarios","emails","links"].forEach(function(n){
       document.getElementById("v-" + n).hidden = (n !== v);
       document.getElementById("t-" + n).setAttribute("aria-selected", n === v ? "true" : "false");
     });
@@ -1643,10 +1672,105 @@ body{background:var(--bg)}
     if (!document.getElementById("mascot")) initMascot();
     if (!document.getElementById("fx")) { var fx = document.createElement("div"); fx.id = "fx"; fx.setAttribute("aria-hidden", "true"); document.body.appendChild(fx); }
   })();
+  /* ---------- live captions: your mic only, ticks call checklist items you say ---------- */
+  (function(){
+    var HEAR = {
+      rec:["recorded"], plan:["include gst","includes gst","before discount"],
+      price:["remain unchanged","no expiry date","giving you notice"],
+      bill:["every 28 days","28 days","twenty eight days","twenty-eight days"],
+      idl:["licence","license","your id"], life:["life support"], conc:["concession"],
+      fees:["per attempt","first bill"], terms:["handle the switch","two business days","few weeks"],
+      breakers:["main switch"], meters:["meter numbers"], comms:["welcome pack"]
+    };
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var box = document.getElementById("lc"), btn = document.getElementById("lc-btn"), txt = document.getElementById("lc-text");
+    var msg = document.getElementById("lc-msg"), tk = document.getElementById("lc-ticked");
+    var finalText = "", interim = "", scanned = 0, on = false, rec = null, auto = [];
+    function say(m, err){ msg.textContent = m || ""; msg.classList.toggle("err", !!err); }
+    function names(){ var n = {}; allItems().forEach(function(it){ n[it.id] = it.t; }); return n; }
+    function draw(){
+      box.classList.toggle("on", on);
+      btn.textContent = on ? "Stop captions" : "Start captions";
+      txt.textContent = "";
+      if (!finalText && !interim) {
+        var ph = document.createElement("span"); ph.className = "lc-ph";
+        ph.textContent = on ? "Listening… start talking." : "Captions use your mic only, so they show what you say. When you say a checklist line, it gets ticked for you.";
+        txt.appendChild(ph);
+      } else {
+        txt.appendChild(document.createTextNode(finalText.length > 3000 ? "…" + finalText.slice(-3000) : finalText));
+        if (interim) { var i = document.createElement("i"); i.textContent = (finalText ? " " : "") + interim; txt.appendChild(i); }
+      }
+      txt.scrollTop = txt.scrollHeight;
+      document.getElementById("lc-notes").hidden = !finalText;
+      document.getElementById("lc-clear").hidden = !finalText;
+      var n = names(), shown = auto.filter(function(id){ return S.done[id] && n[id]; }).slice(-6);
+      tk.innerHTML = ""; tk.hidden = !shown.length;
+      if (shown.length) {
+        tk.appendChild(document.createTextNode("Ticked from captions:"));
+        shown.forEach(function(id){
+          var b = document.createElement("button"); b.className = "lc-chip"; b.title = "Wrong? Click to untick";
+          b.textContent = "✓ " + n[id] + " · undo";
+          b.onclick = function(){ auto = auto.filter(function(x){ return x !== id; }); S.done[id] = false; save(); if (S.view === "checklist") flowRender("call"); draw(); };
+          tk.appendChild(b);
+        });
+      }
+    }
+    function scan(){
+      // only look at what was said since the last check, plus a little overlap
+      var from = Math.max(0, scanned - 40), t = finalText.slice(from).toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, " ");
+      scanned = finalText.length;
+      var changed = false;
+      allItems().forEach(function(it){
+        var w = HEAR[it.id]; if (!w || S.done[it.id]) return;
+        if (w.some(function(p){ return t.indexOf(p) !== -1; })) { S.done[it.id] = true; auto.push(it.id); changed = true; }
+      });
+      if (changed) { save(); if (S.view === "checklist") flowRender("call"); }
+    }
+    if (!SR) { btn.hidden = true; say("Live captions need Chrome or Edge on a computer."); return; }
+    function make(){
+      var r = new SR(); r.lang = "en-AU"; r.continuous = true; r.interimResults = true;
+      r.onresult = function(e){
+        interim = "";
+        for (var i = e.resultIndex; i < e.results.length; i++) {
+          var s = e.results[i][0].transcript;
+          if (e.results[i].isFinal) { s = s.trim(); if (s) finalText += (finalText ? " " : "") + s; }
+          else interim += s;
+        }
+        draw(); scan();
+      };
+      r.onerror = function(e){
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") { on = false; say("The microphone is blocked. Allow it in the address bar, then click Start captions.", true); }
+        else if (e.error === "audio-capture") { on = false; say("No microphone found. Check your headset is plugged in.", true); }
+        else if (e.error === "network") say("Captions lost connection. They’ll keep trying while they’re on.", true);
+        draw();
+      };
+      r.onend = function(){ if (on) { try { r.start(); } catch(x) { setTimeout(function(){ if (on) try { r.start(); } catch(y) {} }, 400); } } else draw(); };
+      return r;
+    }
+    btn.addEventListener("click", function(){
+      if (on) { on = false; interim = ""; try { rec && rec.stop(); } catch(x) {} say(""); draw(); return; }
+      rec = rec || make(); on = true; say("Listening to your mic only, so the customer isn’t captioned.");
+      try { rec.start(); } catch(x) {}
+      draw();
+    });
+    document.getElementById("lc-clear").addEventListener("click", function(){ finalText = ""; interim = ""; scanned = 0; draw(); });
+    document.getElementById("lc-notes").addEventListener("click", function(){
+      if (!S.notes) S.notes = {};
+      S.notes.call = ((S.notes.call || "").trim() ? S.notes.call.trim() + "\n\n" : "") + "Captions: " + finalText;
+      var ta = document.getElementById("nt-call"); if (ta) ta.value = S.notes.call; save(); say("Added the captions to your call notes.");
+    });
+    // a new call clears the captions too
+    document.addEventListener("click", function(e){
+      var t = e.target.closest && e.target.closest('[data-nav="new"],[data-reset]');
+      if (t) setTimeout(function(){ if (!Object.keys(S.done).some(function(k){ return S.done[k]; })) { finalText = ""; interim = ""; scanned = 0; auto = []; draw(); } }, 0);
+    });
+    draw();
+  })();
   renderChecklist();
   renderScenarios();
   renderOnline();
   initEmails();
+  if (S.view === "online") S.view = "checklist";
   setView(S.view || "checklist");
 })();
 </script>
