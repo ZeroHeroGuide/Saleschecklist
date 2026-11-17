@@ -947,27 +947,27 @@ body{background:var(--bg)}
       { id:"plan", t:"Confirm rates & GST", tag:"Required" },
       { id:"price", t:"Confirm price change", tag:"Required" },
       { id:"bill", t:"Explain billing cycle & gas estimates", tag:"Required",
-        s:"“You’ll get a bill " + B("every 28 days") + ". Gas bills may be " + B("estimated") + ", then " + B("adjusted") + " after a real read. We contact you by " + B("email or SMS") + ", so bills come by " + B("email, not post") + ".”" }
+        s:"“When you’re with us, we bill " + B("every 28 days") + ". With a smart meter, the data we bill is " + B("accurate") + ". We’ll send the bill as a " + B("PDF by email") + ", and you’ll have an " + B("app") + " for your bills, correspondence and usage. I’ll email you the " + B("login instructions") + ". If you have gas, those bills may be " + B("estimated") + ", then " + B("adjusted") + " after a real read.”" }
     ]},
     { id:"d", n:3, compact:true, title:"ID & safety checks", sub:"ID, life support and concession", items:[
-      { id:"idl", t:"Record ID details & licence state", tag:"Required",
-        s:"“Now I’ll grab your " + B("ID") + ". Which " + B("state") + " is your licence from?”" },
+      { id:"idl", t:"Record ID details (licence or Medicare)", tag:"Required",
+        s:"“I’ll just grab a " + B("point of ID") + " from you, either your " + B("licence or Medicare") + ", whichever is easier to read over the phone.”" },
       { id:"life", t:"Ask about life support", tag:"Safety",
-        s:"“Does anyone there use " + B("life support") + " equipment?”",
+        s:"“And I assume there’s " + B("no life support") + " equipment at the home?”",
         hint:"<b>If YES:</b><br>New sign-up: tick Life Support, the system raises the registration.<br>Existing customer: raise a Life Support Registration activity, not a child note.<br>Move-in: don’t sign up, refer them to their current retailer.",
         link:"Life support scenario", sc:"lifesupport" },
       { id:"conc", t:"Ask about a concession card", tag:"Required",
-        s:"“Does anyone there have a " + B("concession card") + "?”" }
+        s:"“And " + B("no concession") + " at this home, right?”" }
     ]},
     { id:"f", n:4, compact:true, title:"Fees & finish", sub:"Fees, access and what happens next", items:[
       { id:"fees", only:"movein", t:"Disclose fees & contract terms", tag:"Important", special:"fees" },
       { id:"terms", only:"transfer", t:"Explain transfer timing", tag:"Important", s:"x" },
       { id:"breakers", only:"movein", fuel:"elec", t:"Main switch OFF, only if there’s no power", tag:"Rare",
-        s:"“Is the " + B("power on") + " there now? If not, please turn the " + B("main switch OFF") + " before connection day.”" },
+        s:"“Are you at the home by any chance? We’ll " + B("text you") + " to confirm the connection is done. It’ll ask you to turn the " + B("main switches off") + " at the power board. If you " + B("already have power") + ", you don’t need to.”" },
       { id:"meters", t:"Confirm meter numbers", tag:"Required",
-        s:"“We’ll " + B("email your meter numbers") + ". Just let us know if they " + B("don’t match") + ".”" },
+        s:"“We’ll " + B("email you the meter number") + ". Just double check it " + B("matches your physical meter") + " when you get a chance. It’s not urgent.”" },
       { id:"comms", t:"Confirm welcome pack & completion", tag:"Required",
-        s:"“You’ll get an " + B("SMS and email") + " once it’s done, and a " + B("welcome pack") + " within " + B("five days") + ".”" }
+        s:"“We’ll send a " + B("welcome pack") + " within " + B("five days") + " by email, to confirm everything we went through over the phone. Anything you get from GloBird is always " + B("electronic") + ", nothing by post.”" }
     ]}
   ];
 
@@ -1675,12 +1675,13 @@ body{background:var(--bg)}
   /* ---------- live captions: your mic only, ticks call checklist items you say ---------- */
   (function(){
     var HEAR = {
-      rec:["recorded"], plan:["include gst","includes gst","before discount"],
+      rec:["recorded"], plan:["include gst","includes gst","inclusive of gst","including gst","before discount"],
       price:["remain unchanged","no expiry date","giving you notice"],
-      bill:["every 28 days","28 days","twenty eight days","twenty-eight days"],
-      idl:["licence","license","your id"], life:["life support"], conc:["concession"],
-      fees:["per attempt","first bill"], terms:["handle the switch","two business days","few weeks"],
-      breakers:["main switch"], meters:["meter numbers"], comms:["welcome pack"]
+      bill:["28 days","twenty eight days","twenty-eight days","pdf","login instructions"],
+      idl:["licence","license","medicare","point of id","point of it"], life:["life support","live support"], conc:["concession"],
+      fees:["per attempt","first bill","connect for free","connection will be done"], terms:["handle the switch","two business days","few weeks"],
+      breakers:["main switch","power board"], meters:["meter number","physical meter","meet the number"],
+      comms:["welcome pack","well compact","welcome compact","nothing by post","always be electronic"]
     };
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     var box = document.getElementById("lc"), btn = document.getElementById("lc-btn"), txt = document.getElementById("lc-text");
