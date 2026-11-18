@@ -585,6 +585,10 @@ body{background:var(--bg)}
 .em-zh textarea,.em-zh input{width:100%;box-sizing:border-box;font:inherit;font-size:15px;padding:9px 11px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);resize:vertical}
 @media (max-width:900px){.em-zh{grid-template-columns:1fr}}
 
+/* ---------- missed-line nudge ---------- */
+.row.missed{border-color:color-mix(in srgb,var(--amber) 55%,var(--line));background:var(--amber-soft)}
+.nudge{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 12px;padding:10px 12px;border-radius:12px;background:var(--amber-soft);color:var(--amber);font-size:14px}
+.nudge-b{border:1px solid color-mix(in srgb,var(--amber) 40%,transparent);background:var(--surface);color:var(--amber);border-radius:99px;padding:3px 10px;font-size:13px;font-weight:600;cursor:pointer}
 /* ---------- live captions ---------- */
 .lc{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:20px;display:grid;gap:10px;box-shadow:var(--shadow)}
 .lc-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -668,7 +672,6 @@ body{background:var(--bg)}
         <label>Customer first name<input id="em-first" autocomplete="off" placeholder="e.g. Sam"></label>
         <label>Customer email<input id="em-to" type="email" autocomplete="off" placeholder="name@example.com"></label>
         <label>Move-in date<input id="em-date" autocomplete="off" placeholder="e.g. Mon 23 Nov"></label>
-        <label>Your name<input id="em-me" autocomplete="off" placeholder="Saved on this device"></label>
       </div>
       <div class="em-zh" id="emZh" hidden>
         <label>ZeroHero unit prices <small>one per line, e.g. Peak 38.50c/kWh</small><textarea id="em-zhp" rows="4" placeholder="Daily supply 115.50c/day&#10;Peak 38.50c/kWh&#10;Off-peak 22.00c/kWh&#10;Solar feed-in 5.00c/kWh"></textarea></label>
@@ -980,9 +983,9 @@ body{background:var(--bg)}
 
   /* ---------- render checklist ---------- */
   function scriptBox(label, text){ return '<div class="script">' + (label ? '<b>' + label + '</b>' : "") + '<p>' + text + '</p></div>'; }
-  var curCompact = false;
+  var curCompact = false, curMissed = false;
   function rowOpen(it, done, id){
-    return '<div class="row' + (curCompact ? ' compact' : "") + (done ? ' done' : "") + '" role="checkbox" aria-checked="' + done + '" tabindex="0" data-tick="' + id + '"><span class="box">' + CHECK + '</span><div class="row-main"><div class="row-top"><span class="ic-tile">' + icon(itemIcon(id)) + '</span><span class="row-t">' + it.t + '</span><span class="tag ' + it.tag.replace(/ /g, "") + '">' + it.tag + '</span></div>';
+    return '<div class="row' + (curCompact ? ' compact' : "") + (done ? ' done' : "") + (curMissed && !done && !it.optional ? ' missed' : "") + '" role="checkbox" aria-checked="' + done + '" tabindex="0" data-tick="' + id + '"><span class="box">' + CHECK + '</span><div class="row-main"><div class="row-top"><span class="ic-tile">' + icon(itemIcon(id)) + '</span><span class="row-t">' + it.t + '</span><span class="tag ' + it.tag.replace(/ /g, "") + '">' + it.tag + '</span></div>';
   }
   function itemHTML(it){
     var h = rowOpen(it, !!S.done[it.id], it.id);
@@ -1179,9 +1182,20 @@ body{background:var(--bg)}
       var C = 163.36, off = (C * (1 - ov.pct / 100)).toFixed(2);
       h += '<div class="stg-head"><div class="stg-top"><div class="stg-tx"><div class="stg-meta"><span>Stage ' + (idx + 1) + ' of ' + stages.length + '</span><span>' + c + ' of ' + real.length + ' ticked</span></div><h1>' + stg.title + '</h1>' + (stg.sub ? '<p class="lead">' + stg.sub + '</p>' : "") + '</div><div class="ring" role="img" aria-label="' + ov.pct + ' percent of the call covered"><svg viewBox="0 0 64 64" aria-hidden="true"><circle class="rb" cx="32" cy="32" r="26"/><circle class="rf" cx="32" cy="32" r="26" stroke-dasharray="' + C + '" stroke-dashoffset="' + off + '"/></svg><b>' + ov.pct + '%</b></div></div></div>';
       if (stg.extra) h += stg.extra;
+      // missed-line nudge: once you've moved past a stage, its unticked lines show in amber
+      var mk = F.sk + "Max"; S[mk] = Math.max(S[mk] || 0, idx);
+      var skipped = [];
+      stages.forEach(function(sg, si){ if (si < idx) realItems(sg).forEach(function(it){ if (!done[it.id]) skipped.push({ t: it.t, i: si }); }); });
+      if (skipped.length) {
+        h += '<div class="nudge"><b>Missed earlier:</b> ';
+        skipped.forEach(function(m){ h += '<button class="nudge-b" data-goto="' + m.i + '">' + m.t + '</button>'; });
+        h += '</div>';
+      }
       if (kind === "call" && idx > 0) h += ctxHTML();
       curCompact = !!stg.compact;
+      curMissed = idx < S[mk];
       stg.items.forEach(function(it){ h += it.picker ? pickerHTML() : stg.render(it); });
+      curMissed = false;
       curCompact = false;
       h += '<button class="link-btn" data-reset="1">' + (armed[kind] ? "Tap again to clear ticks and notes" : "Start over") + '</button>';
     }
@@ -1379,12 +1393,6 @@ body{background:var(--bg)}
   }
   var ZHG = "https://zeroheroguide.github.io/Features-Scheduling/";
   var EMAILS = [
-    { id:"missed", ic:"phone", t:"Sorry we missed you", s:"Callback attempt, no answer",
-      subj:function(){ return "Your GloBird Energy callback"; },
-      body:function(v){ return [
-        "I tried calling you back today about your energy with GloBird Energy, but couldn’t reach you.",
-        "Just reply with a good day and time, and I’ll call you then. It only takes a few minutes."
-      ]; } },
     { id:"follow", ic:"send", t:"Following up our chat", s:"They want time to think",
       subj:function(){ return "Following up our chat"; },
       body:function(v){ return [
@@ -1406,28 +1414,13 @@ body{background:var(--bg)}
       if (S.journey === "movein") b.push("Your connection is booked" + (v.date ? " for <b>" + esc(v.date) + "</b>" : "") + ". Please keep <b>clear access</b> to your meter" + (hasG() ? "s" : "") + " on the day.");
       b.push("If you have any questions, just reply to this email.");
       return b; } },
-    { id:"movein", ic:"plug", t:"Move-in connection details", s:"Date, fees and access, from the call picker",
-      subj:function(v){ return "Your move-in connection" + (v.date ? " on " + v.date : ""); },
-      body:function(v){
-        var b = ["Here are the details for your move-in connection" + (v.date ? " on <b>" + esc(v.date) + "</b>" : "") + "."];
-        b.push({ ul: emFee().concat([
-          "If your meter is plugged, a pass-through fee applies. This is very rare.",
-          "All fees are <b>per attempt, per meter</b>, and go on your <b>first bill</b>."
-        ]) });
-        var acc = [];
-        if (hasG() || S.state !== "VIC") acc.push("Please keep <b>clear access</b> to your meter" + (hasG() && hasE() ? "s" : "") + " on the day, with gates unlocked and pets inside.");
-        if (hasE()) acc.push("If there’s <b>no power</b> at the property, please make sure the <b>main switch is OFF</b>.");
-        b = b.concat(acc);
-        b.push("If anything changes, just reply to this email.");
-        return b; } },
     { id:"zhquote", ic:"battery", t:"ZeroHero quote", s:"Unit prices and the plan guide (send with the sign-up link)",
       subj:function(){ return "Your ZeroHero quote from GloBird Energy"; },
       body:function(v){
         var z = S.email || {}, lines = (z.zhp || "").split(/\n/).map(function(x){ return x.trim(); }).filter(Boolean);
-        var b = ["Thanks for your interest in our <b>ZeroHero</b> plan. Here’s your quote:"];
+        var b = ["Thanks for your interest in our ZeroHero plan. Your quote was sent separately with a Join Now button to assist with your online sign up. Here’s your quote:"];
         b.push({ ul: lines.length ? lines.map(esc) : ["[Add your unit prices above]"] });
-        b.push("All potential costs <b>include GST</b>, prices may be <b>before discount</b>.");
-        b.push("Want to know more? This quick guide explains how ZeroHero works and shows you how to sign up online. It takes about <b>2 minutes</b>: <a href=\"" + ZHG + "#b1\">" + ZHG + "#b1</a>");
+        b.push("Want to know more? This quick guide explains how ZeroHero works and shows you how to sign up online. It takes about 2 minutes: <a href=\"" + ZHG + "#b1\">" + ZHG + "#b1</a>");
         b.push("Any questions, just reply to this email.");
         return b; } },
     { id:"zhafter", ic:"gauge", t:"ZeroHero: manage your plan", s:"After sign-up: set up the battery and get the most out of it",
@@ -1443,25 +1436,6 @@ body{background:var(--bg)}
           "Join our Virtual Power Plant: <a href=\"https://www.globirdenergy.com.au/join-vpp/\">globirdenergy.com.au/join-vpp</a>"
         ] },
         "Any questions, just reply to this email."
-      ]; } },
-    { id:"id", ic:"idcard", t:"ID check needed", s:"Sign-up can’t finish without ID",
-      subj:function(){ return "One quick step to finish your sign-up"; },
-      body:function(){ return [
-        "Thanks for signing up with GloBird Energy. We just need to confirm your ID before we can finish setting up your account.",
-        "For your security, please <b>don’t send ID details by email</b>. Reply with a good time and I’ll call you, or call us when it suits you. Have your driver licence, passport or Medicare card handy."
-      ]; } },
-    { id:"ls", ic:"heart", t:"Life support form", s:"Someone at the property uses life support equipment",
-      subj:function(){ return "Life support: Medical Confirmation Form"; },
-      body:function(){ return [
-        "Thanks for letting us know that someone at the property relies on life support equipment. We’ve registered the property for life support.",
-        "To keep the registration in place, please ask a registered medical practitioner to fill in the <b>Medical Confirmation Form</b> and send it back to us within <b>50 business days</b>.",
-        "We’ll send the form separately. If you don’t receive it, or you have any questions, just reply to this email."
-      ]; } },
-    { id:"conc", ic:"card", t:"Concession card", s:"They may be eligible for a concession",
-      subj:function(){ return "Add your concession to your account"; },
-      body:function(){ return [
-        "You may be eligible for an energy concession on your account.",
-        "For your security, please <b>don’t send card details by email</b>. Reply with a good time and I’ll call you, or call us with your concession card handy and we’ll add it for you."
       ]; } }
   ];
   function emVals(){
@@ -1478,8 +1452,8 @@ body{background:var(--bg)}
         txt += p.ul.map(function(x){ return "• " + plain(x); }).join("\n") + "\n\n";
       } else if (p) { html += "<p>" + p + "</p>"; txt += plain(p) + "\n\n"; }
     });
-    var sig = ["Kind regards,", v.me || "[Your name]", "GloBird Energy"];
-    html += "<p>" + sig.map(esc).join("<br>") + "</p>"; txt += sig.join("\n");
+    // no sign-off here: Outlook adds your signature (Kind regards, Darius / Sales Team) to every email
+    txt = txt.replace(/\n+$/, "");
     return { subj: t.subj(v), html: html, txt: txt, to: v.to };
   }
   function emToast(msg){
@@ -1594,7 +1568,7 @@ body{background:var(--bg)}
         if ((t = e.target.closest("[data-st]"))) { S.state = t.getAttribute("data-st"); S.dist = DIST[S.state][0]; save(); flowRender(kind); return; }
       }
       if (e.target.closest("[data-reset]")) {
-        if (armed[kind]) { armed[kind] = false; S[F.dk] = {}; S[F.sk] = 0; clearNotes(kind); save(); flowRender(kind); window.scrollTo(0, 0); }
+        if (armed[kind]) { armed[kind] = false; S[F.dk] = {}; S[F.sk] = 0; S[F.sk + "Max"] = 0; clearNotes(kind); save(); flowRender(kind); window.scrollTo(0, 0); }
         else { armed[kind] = true; flowRender(kind); setTimeout(function(){ if (armed[kind]) { armed[kind] = false; flowRender(kind); } }, 3500); }
         return;
       }
@@ -1616,7 +1590,7 @@ body{background:var(--bg)}
     var kind = S.view === "online" ? "online" : "call", F = FL[kind], stages = stagesOf(kind), idx = flowIndex(kind, stages), a = b.getAttribute("data-nav");
     if (a === "back") idx = Math.max(0, idx - 1);
     else if (a === "next") idx = Math.min(stages.length, idx + 1);
-    else if (a === "new") { S[F.dk] = {}; idx = 0; clearNotes(kind); }
+    else if (a === "new") { S[F.dk] = {}; idx = 0; S[F.sk + "Max"] = 0; clearNotes(kind); }
     S[F.sk] = idx; save(); flowRender(kind, true); window.scrollTo(0, 0);
     if (idx >= stages.length && a === "next") {
       var dn = S[F.dk], miss = false;
@@ -1716,14 +1690,37 @@ body{background:var(--bg)}
         });
       }
     }
+    function norm(x){ return String(x).toLowerCase().replace(/<[^>]*>/g, " ").replace(/[’']/g, "").replace(/\$/g, "").replace(/[^a-z0-9.% ]+/g, " ").replace(/\.(?!\d)/g, " ").replace(/\s+/g, " ").trim(); }
+    function boldWords(it){
+      var h = ""; try { h = itemHTML(it); } catch(e) {}
+      var out = [], re = /<strong>([\s\S]*?)<\/strong>/g, m;
+      while ((m = re.exec(h))) { var p = norm(m[1]); if (p.length >= 2) out.push(p); }
+      return out;
+    }
+    // speech-to-text often mishears these; read them as the real words before matching
+    var ALIAS = [["live support","life support"],["point of it","point of id"],["well compact","welcome pack"],["welcome compact","welcome pack"],["meet the number","meter number"],["twenty eight days","28 days"],["twenty-eight days","28 days"],["license","licence"],["inclusive","include"],["includes","include"],["including","include"],["discounts","discount"]];
+    var STOP = ["the","a","an","to","of","you","your","it","its","is","at","on","in","and","for","we","be","by","if","or","with","there","this","that","any","all","so"];
+    var heardKeys = {};   // item id -> bold words said so far this call
     function scan(){
       // only look at what was said since the last check, plus a little overlap
-      var from = Math.max(0, scanned - 40), t = finalText.slice(from).toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, " ");
+      var from = Math.max(0, scanned - 60), tn = " " + norm(finalText.slice(from)) + " ";
       scanned = finalText.length;
+      ALIAS.forEach(function(a){ tn = tn.split(" " + norm(a[0]) + " ").join(" " + norm(a[1]) + " "); });
       var changed = false;
       allItems().forEach(function(it){
-        var w = HEAR[it.id]; if (!w || S.done[it.id]) return;
-        if (w.some(function(p){ return t.indexOf(p) !== -1; })) { S.done[it.id] = true; auto.push(it.id); changed = true; }
+        if (S.done[it.id]) return;
+        // the rule: a line ticks once MOST of its bold words have been said during the call
+        var keys = boldWords(it).filter(function(k, i, a){ return a.indexOf(k) === i; });
+        if (!keys.length) return;
+        var got = heardKeys[it.id] = heardKeys[it.id] || {};
+        // a bold phrase counts as said when all its main words come up in the same stretch of speech
+        keys.forEach(function(k){
+          var words = k.split(" ").filter(function(w){ return STOP.indexOf(w) === -1; });
+          if (!words.length) words = [k];
+          if (words.every(function(w){ return tn.indexOf(" " + w + " ") !== -1; })) got[k] = true;
+        });
+        var n = keys.filter(function(k){ return got[k]; }).length;
+        if (n * 2 > keys.length) { S.done[it.id] = true; auto.push(it.id); changed = true; }
       });
       if (changed) { save(); if (S.view === "checklist") flowRender("call"); }
     }
@@ -1763,7 +1760,7 @@ body{background:var(--bg)}
     // a new call clears the captions too
     document.addEventListener("click", function(e){
       var t = e.target.closest && e.target.closest('[data-nav="new"],[data-reset]');
-      if (t) setTimeout(function(){ if (!Object.keys(S.done).some(function(k){ return S.done[k]; })) { finalText = ""; interim = ""; scanned = 0; auto = []; draw(); } }, 0);
+      if (t) setTimeout(function(){ if (!Object.keys(S.done).some(function(k){ return S.done[k]; })) { finalText = ""; interim = ""; scanned = 0; auto = []; heardKeys = {}; draw(); } }, 0);
     });
     draw();
   })();
