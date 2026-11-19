@@ -1679,7 +1679,22 @@ body{background:var(--bg)}
       document.getElementById("lc-notes").hidden = !finalText;
       document.getElementById("lc-clear").hidden = !finalText;
       var n = names(), shown = auto.filter(function(id){ return S.done[id] && n[id]; }).slice(-6);
-      tk.innerHTML = ""; tk.hidden = !shown.length;
+      var ps = picks.filter(function(p){ return p.k === "loc" || S[p.f] === p.v; });
+      tk.innerHTML = ""; tk.hidden = !shown.length && !ps.length;
+      if (ps.length) {
+        tk.appendChild(document.createTextNode("Picked from captions:"));
+        ps.forEach(function(p){
+          var b = document.createElement("button"); b.className = "lc-chip"; b.title = "Wrong? Click to undo";
+          b.textContent = "✓ " + pickNow(p) + " · undo";
+          b.onclick = function(){
+            if (p.k === "loc") { S.state = p.prev.state; S.dist = p.prev.dist; } else S[p.f] = p.prev[p.f];
+            lock[p.k] = true; picks = picks.filter(function(x){ return x !== p; });
+            save(); if (S.view === "checklist") flowRender("call"); draw();
+          };
+          tk.appendChild(b);
+        });
+        if (shown.length) tk.appendChild(document.createElement("br"));
+      }
       if (shown.length) {
         tk.appendChild(document.createTextNode("Ticked from captions:"));
         shown.forEach(function(id){
@@ -1701,12 +1716,59 @@ body{background:var(--bg)}
     var ALIAS = [["live support","life support"],["point of it","point of id"],["well compact","welcome pack"],["welcome compact","welcome pack"],["meet the number","meter number"],["twenty eight days","28 days"],["twenty-eight days","28 days"],["license","licence"],["inclusive","include"],["includes","include"],["including","include"],["discounts","discount"]];
     var STOP = ["the","a","an","to","of","you","your","it","its","is","at","on","in","and","for","we","be","by","if","or","with","there","this","that","any","all","so"];
     var heardKeys = {};   // item id -> bold words said so far this call
+    // "Why did they call?" picks from what you say. Each rule: field, value, label, phrases (misheard spellings included)
+    var PICK = [
+      ["journey","movein","Move-in",["move in","moving in","moved in","connect you tomorrow","connect you today","connect you on","get you connected"]],
+      ["journey","transfer","Transfer",["transfer","transferring","switch over","switching over","handle the switch"]],
+      ["fuel","both","Both",["electricity and gas","gas and electricity","power and gas","gas and power","dual fuel"]],
+      ["fuel","elec","Electricity",["electricity only","just electricity","just the electricity","just power","just the power","only electricity"]],
+      ["fuel","gas","Gas",["gas only","just gas","just the gas","only gas"]],
+      ["state","VIC","VIC",["victoria","vic"]],
+      ["state","NSW","NSW",["new south wales","nsw"]],
+      ["state","QLD","QLD",["queensland","qld"]],
+      ["state","SA","SA",["south australia"]],
+      ["dist","Ausgrid","Ausgrid",["ausgrid","aus grid","oz grid","ozgrid","ausgrid energy"]],
+      ["dist","Endeavour Energy","Endeavour Energy",["endeavour","endeavor"]],
+      ["dist","Essential Energy","Essential Energy",["essential energy"]],
+      ["dist","Energex","Energex",["energex","nhx","energy x","energy ex","energx","nrg x","in a jax","energix"]],
+      ["dist","SA Power Networks","SA Power Networks",["sa power networks","sa power","s a power"]],
+      ["meter","basic","Basic or semi-smart",["basic meter","semi smart","manual meter","manually read","basic or semi"]],
+      ["meter","smart","Smart remote",["smart remote","remote meter","remotely read"]]
+    ];
+    var DSTATE = { "Ausgrid":"NSW", "Endeavour Energy":"NSW", "Essential Energy":"NSW", "Energex":"QLD", "SA Power Networks":"SA" };
+    var picks = [], lock = {};   // picks made from captions (with what to undo to); fields you undid stay yours for this call
+    function pickLabel(f, v){ for (var i = 0; i < PICK.length; i++) if (PICK[i][0] === f && PICK[i][1] === v) return PICK[i][2]; return v; }
+    function setPick(f, v){
+      var k = (f === "state" || f === "dist") ? "loc" : f;   // state and distributor are one pick
+      if (lock[k] || S[f] === v) return false;
+      var old = picks.filter(function(p){ return p.k === k; })[0];
+      var prev = old ? old.prev : { journey:S.journey, fuel:S.fuel, state:S.state, dist:S.dist, meter:S.meter };
+      if (f === "dist") { if (DSTATE[v] && S.state !== DSTATE[v]) S.state = DSTATE[v]; S.dist = v; }
+      else if (f === "state") { S.state = v; S.dist = DIST[v][0]; }
+      else S[f] = v;
+      picks = picks.filter(function(p){ return p.k !== k; });
+      picks.push({ k:k, f:f, v:v, prev:prev });
+      return true;
+    }
+    function pickNow(p){ return p.k === "loc" ? S.state + (S.state !== "VIC" ? " · " + S.dist : "") : pickLabel(p.f, p.v); }
+    function scanPicks(tn){
+      var changed = false, best = {};
+      // the last thing said wins for each field
+      PICK.forEach(function(r){
+        r[3].forEach(function(ph){
+          var at = tn.lastIndexOf(" " + norm(ph) + " ");
+          if (at !== -1 && (!best[r[0]] || at > best[r[0]].at)) best[r[0]] = { v:r[1], at:at };
+        });
+      });
+      ["journey","fuel","state","dist","meter"].forEach(function(f){ if (best[f] && setPick(f, best[f].v)) changed = true; });
+      return changed;
+    }
     function scan(){
       // only look at what was said since the last check, plus a little overlap
       var from = Math.max(0, scanned - 60), tn = " " + norm(finalText.slice(from)) + " ";
       scanned = finalText.length;
       ALIAS.forEach(function(a){ tn = tn.split(" " + norm(a[0]) + " ").join(" " + norm(a[1]) + " "); });
-      var changed = false;
+      var changed = scanPicks(tn);
       allItems().forEach(function(it){
         if (S.done[it.id]) return;
         // the rule: a line ticks once MOST of its bold words have been said during the call
@@ -1722,7 +1784,7 @@ body{background:var(--bg)}
         var n = keys.filter(function(k){ return got[k]; }).length;
         if (n * 2 > keys.length) { S.done[it.id] = true; auto.push(it.id); changed = true; }
       });
-      if (changed) { save(); if (S.view === "checklist") flowRender("call"); }
+      if (changed) { save(); if (S.view === "checklist") flowRender("call"); draw(); }
     }
     if (!SR) { btn.hidden = true; say("Live captions need Chrome or Edge on a computer."); return; }
     function make(){
@@ -1760,7 +1822,7 @@ body{background:var(--bg)}
     // a new call clears the captions too
     document.addEventListener("click", function(e){
       var t = e.target.closest && e.target.closest('[data-nav="new"],[data-reset]');
-      if (t) setTimeout(function(){ if (!Object.keys(S.done).some(function(k){ return S.done[k]; })) { finalText = ""; interim = ""; scanned = 0; auto = []; heardKeys = {}; draw(); } }, 0);
+      if (t) setTimeout(function(){ if (!Object.keys(S.done).some(function(k){ return S.done[k]; })) { finalText = ""; interim = ""; scanned = 0; auto = []; heardKeys = {}; picks = []; lock = {}; draw(); } }, 0);
     });
     draw();
   })();
